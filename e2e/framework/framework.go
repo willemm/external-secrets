@@ -76,6 +76,10 @@ func New(baseName string) *Framework {
 func (f *Framework) BeforeEach() {
 	var err error
 	By("Building a namespace api object")
+	annotations := make(map[string]string)
+	annotations["iam.gke.io/gcp-service-account"] = "external-secrets@external-secrets-operator.iam.gserviceaccount.com"
+	_, err = util.UpdateKubeSA("eso-external-secrets", f.KubeClientSet, "default", annotations)
+	Expect(err).NotTo(HaveOccurred())
 	f.Namespace, err = util.CreateKubeNamespace(f.BaseName, f.KubeClientSet)
 	Expect(err).NotTo(HaveOccurred())
 

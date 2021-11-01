@@ -35,14 +35,15 @@ import (
 	gcpsm "github.com/external-secrets/external-secrets/pkg/provider/gcp/secretmanager"
 )
 
-type gcpProvider struct {
+// nolint // Better to keep names consistent even if it stutters;
+type GcpProvider struct {
 	credentials string
 	projectID   string
 	framework   *framework.Framework
 }
 
-func newgcpProvider(f *framework.Framework, credentials, projectID string) *gcpProvider {
-	prov := &gcpProvider{
+func NewgcpProvider(f *framework.Framework, credentials, projectID string) *GcpProvider {
+	prov := &GcpProvider{
 		credentials: credentials,
 		projectID:   projectID,
 		framework:   f,
@@ -51,7 +52,7 @@ func newgcpProvider(f *framework.Framework, credentials, projectID string) *gcpP
 	return prov
 }
 
-func (s *gcpProvider) CreateSecret(key, val string) {
+func (s *GcpProvider) CreateSecret(key, val string) {
 	ctx := context.Background()
 	config, err := google.JWTConfigFromJSON([]byte(s.credentials), gcpsm.CloudPlatformRole)
 	Expect(err).ToNot(HaveOccurred())
@@ -83,7 +84,7 @@ func (s *gcpProvider) CreateSecret(key, val string) {
 	Expect(err).ToNot(HaveOccurred())
 }
 
-func (s *gcpProvider) DeleteSecret(key string) {
+func (s *GcpProvider) DeleteSecret(key string) {
 	ctx := context.Background()
 	config, err := google.JWTConfigFromJSON([]byte(s.credentials), gcpsm.CloudPlatformRole)
 	Expect(err).ToNot(HaveOccurred())
@@ -98,7 +99,7 @@ func (s *gcpProvider) DeleteSecret(key string) {
 	Expect(err).ToNot(HaveOccurred())
 }
 
-func (s *gcpProvider) BeforeEach() {
+func (s *GcpProvider) BeforeEach() {
 	By("creating a gcp secret")
 	gcpCreds := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{

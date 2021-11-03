@@ -74,6 +74,7 @@ kind create cluster --name external-secrets
 export TAG=v2
 export IMAGE=eso-local
 
+make build
 docker build . -t $IMAGE:$TAG --build-arg TARGETARCH=amd64 --build-arg TARGETOS=linux
 
 make helm.generate

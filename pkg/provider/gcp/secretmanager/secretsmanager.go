@@ -31,6 +31,7 @@ import (
 	esv1alpha1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1"
 	"github.com/external-secrets/external-secrets/pkg/provider"
 	"github.com/external-secrets/external-secrets/pkg/provider/schema"
+	"github.com/external-secrets/external-secrets/pkg/reporter"
 	"github.com/external-secrets/external-secrets/pkg/utils"
 )
 
@@ -138,12 +139,15 @@ func (sm *ProviderGCP) NewClient(ctx context.Context, store esv1alpha1.GenericSt
 	}
 	ts, err := google.DefaultTokenSource(ctx, CloudPlatformRole)
 	if err != nil {
+		reporter.ReporterInstance.Failed(store, err, "GCPInvalidCredentials", errUnableProcessDefaultCredentials)
 		return nil, fmt.Errorf(errUnableProcessDefaultCredentials, err)
 	}
 	clientGCPSM, err := secretmanager.NewClient(ctx, option.WithTokenSource(ts))
 	if err != nil {
 		return nil, fmt.Errorf(errUnableCreateGCPSMClient, err)
 	}
+	fmt.Println("Before call!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	reporter.ReporterInstance.Ready(store)
 	sm.SecretManagerClient = clientGCPSM
 	return sm, nil
 }

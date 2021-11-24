@@ -25,7 +25,6 @@ cd $DIR
 
 echo "Kubernetes cluster:"
 kubectl get nodes -o wide
-kubectl describe node external-secrets-control-plane
 
 echo -e "Granting permissions to e2e service account..."
 kubectl create serviceaccount external-secrets-e2e || true
@@ -64,4 +63,4 @@ kubectl run --rm \
   --env="ORACLE_FINGERPRINT=${ORACLE_FINGERPRINT:-}" \
   --env="ORACLE_KEY=${ORACLE_KEY:-}" \
   --overrides='{ "apiVersion": "v1", "spec":{"serviceAccountName": "external-secrets-e2e"}}' \
-  e2e --image=local/external-secrets-e2e:test
+  e2e --image=${E2E_IMAGE_REGISTRY}:${E2E_VERSION}

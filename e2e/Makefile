@@ -8,6 +8,9 @@ KIND_IMG    = "kindest/node:v1.21.1@sha256:69860bda5563ac81e3c0057d654b525321961
 BUILD_ARGS  ?=
 export FOCUS := $(FOCUS)
 
+export E2E_IMAGE_REGISTRY ?= ghcr.io/external-secrets/external-secrets-e2e
+export E2E_VERSION ?= $(PR_IMG_TAG)
+
 start-kind: ## Start kind cluster
 	kind create cluster \
 	  --name external-secrets \
@@ -25,6 +28,25 @@ test: e2e-image ## Run e2e tests against current kube context
 	kind load docker-image --name="external-secrets" $(IMG)
 	./run.sh
 
+test.managed: e2e-remote-values e2e-image.managed  ## Run e2e tests against current kube context
+	$(MAKE) -C ../ docker.build \
+		VERSION=$(PR_IMG_TAG) \
+		ARCH=amd64 \
+		BUILD_ARGS="${BUILD_ARGS} --build-arg TARGETARCH=amd64 --build-arg TARGETOS=linux"
+	$(MAKE) -C ../ docker.push \
+		VERSION=$(PR_IMG_TAG)
+	$(MAKE) -C ../ docker.push \
+		IMAGE_REGISTRY=$(E2E_IMAGE_REGISTRY) \
+		VERSION=$(E2E_VERSION)
+	./run.sh
+
+e2e-remote-values:
+	sed -i "s|respository: [^ ]*|repository: $(E2E_IMAGE_REGISTRY)|g" k8s/eso.values.yaml
+	sed -i "s|tag: [^ ]*|tag: $(E2E_VERSION)|g" k8s/eso.values.yaml
+	sed -i "s|respository: [^ ]*|repository: $(E2E_IMAGE_REGISTRY)|g" k8s/eso.scoped.values.yaml
+	sed -i "s|tag: [^ ]*|tag: $(E2E_VERSION)|g" k8s/eso.scoped.values.yaml
+
+
 e2e-bin:
 	CGO_ENABLED=0 go run github.com/onsi/ginkgo/ginkgo build .
 
@@ -34,6 +56,13 @@ e2e-image: e2e-bin
 	$(MAKE) -C ../ helm.generate
 	cp -r ../deploy ./k8s
 	docker build $(BUILD_ARGS) -t $(IMG) .
+
+e2e-image.managed: e2e-bin
+	-rm -rf ./k8s/deploy
+	mkdir -p k8s
+	$(MAKE) -C ../ helm.generate
+	cp -r ../deploy ./k8s
+	docker build $(BUILD_ARGS) -t ghcr.io/external-secrets/external-secrets-e2e:$(PR_IMG_TAG) .
 
 stop-kind: ## Stop kind cluster
 	kind delete cluster \

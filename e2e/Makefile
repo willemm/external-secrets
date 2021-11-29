@@ -8,8 +8,8 @@ KIND_IMG    = "kindest/node:v1.21.1@sha256:69860bda5563ac81e3c0057d654b525321961
 BUILD_ARGS  ?=
 export FOCUS := $(FOCUS)
 
-export E2E_IMAGE_REGISTRY ?= ghcr.io/external-secrets/external-secrets-e2e
-export E2E_VERSION ?= $(PR_IMG_TAG)
+export E2E_IMAGE_REGISTRY ?=
+export E2E_VERSION ?=
 
 start-kind: ## Start kind cluster
 	kind create cluster \

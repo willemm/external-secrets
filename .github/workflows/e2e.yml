@@ -20,6 +20,8 @@ env:
   AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET}}
   TENANT_ID: ${{ secrets.TENANT_ID}}
   VAULT_URL: ${{ secrets.VAULT_URL}}
+  E2E_IMAGE_REGISTRY: local/external-secrets-e2e
+  E2E_VERSION: test
 
 name: e2e tests
 

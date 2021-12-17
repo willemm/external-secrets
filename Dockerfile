@@ -1,9 +1,30 @@
-FROM gcr.io/distroless/static
-ARG TARGETOS
-ARG TARGETARCH
-COPY bin/external-secrets-${TARGETOS}-${TARGETARCH} /bin/external-secrets
+FROM golang:1.17 as builder
+
+RUN curl http://pr-art.europe.stater.corp/artifactory/auto-local/certs/pr-root.cer | sed -e "s/\r//g" > /usr/local/share/ca-certificates/pr-root.crt \
+ && update-ca-certificates
+
+WORKDIR /workspace
+# Copy the Go Modules manifests
+COPY go.mod go.mod
+COPY go.sum go.sum
+# cache deps before building and copying source so that we don't need to re-download as much
+# and so that source changes don't invalidate our downloaded layer
+RUN GOPROXY=https://proxy.golang.org go mod download
+
+# Copy the go source
+COPY main.go main.go
+COPY e2e/ e2e/
+COPY apis/ apis/
+COPY pkg/ pkg/
+
+# Build
+RUN GOPROXY=https://proxy.golang.org CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o external-secrets main.go
+
+FROM distroless/static:nonroot
+WORKDIR /
+COPY --from=builder /workspace/external-secrets /bin/external-secrets
 
 # Run as UID for nobody
-USER 65534
+USER 65532:65532
 
 ENTRYPOINT ["/bin/external-secrets"]

@@ -5,6 +5,7 @@ go 1.16
 replace (
 	github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1 => ./apis/externalsecrets/v1alpha1
 	github.com/external-secrets/external-secrets/pkg/provider/gitlab => ./pkg/provider/gitlab
+        github.com/external-secrets/external-secrets/e2e/framework/log => ./e2e/framework/log
 	google.golang.org/grpc => google.golang.org/grpc v1.27.0
 	k8s.io/api => k8s.io/api v0.21.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.21.2

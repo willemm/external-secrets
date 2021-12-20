@@ -163,7 +163,7 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1.ExternalSecretDataRemo
 		if err := json.Unmarshal(result, &jsondata); err != nil {
 			return nil, fmt.Errorf("Failed to parse response: %w", err)
 		}
-		jsondata, err = jsonpath.Get(prov.Result.JsonPath, &jsondata)
+		jsondata, err = jsonpath.Get(prov.Result.JsonPath, jsondata)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to parse response (path): %w", err)
 		}

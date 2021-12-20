@@ -20,16 +20,33 @@ import (
 
 // AkeylessProvider Configures an store to sync secrets using Akeyless KV.
 type WebhookProvider struct {
-	// Webhook url to call
-	WebhookUrl string `json:"url"`
+	// Webhook Method
+	// +optional, default GET
+	Method string `json:"method,omitempty"`
 
-	// Webhook body
+	// Webhook url to call
+	Url string `json:"url"`
+
+	// Headers
 	// +optional
-	WebhookBody string `json:"body,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+
+	// Body
+	// +optional
+	Body string `json:"body,omitempty"`
+
+	// Result formatting
+	Result WebhookResult `json:"result"`
 
 	// Secrets to fill in templates
 	// +optional
 	Secrets []WebhookSecret `json:"secrets,omitempty"`
+}
+
+type WebhookResult struct {
+	// Json path of return value
+	// +optional
+	JsonPath string `json:"jsonPath,omitempty"`
 }
 
 type WebhookSecret struct {

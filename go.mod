@@ -41,6 +41,7 @@ require (
 	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
 	github.com/IBM/go-sdk-core/v5 v5.5.0
 	github.com/IBM/secrets-manager-go-sdk v1.0.23
+	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/akeylesslabs/akeyless-go-cloud-id v0.3.2
 	github.com/akeylesslabs/akeyless-go/v2 v2.5.11
 	github.com/aliyun/alibaba-cloud-sdk-go v1.61.1192

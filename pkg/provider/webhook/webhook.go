@@ -29,14 +29,14 @@ import (
 	"net/http"
 
 	esv1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1"
-	// smmeta "github.com/external-secrets/external-secrets/apis/meta/v1"
+	esmeta "github.com/external-secrets/external-secrets/apis/meta/v1"
 	"github.com/external-secrets/external-secrets/pkg/provider"
 	"github.com/external-secrets/external-secrets/pkg/provider/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/PaesslerAG/jsonpath"
-	// corev1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	// "strings"
 )
 
@@ -76,6 +76,24 @@ func getProvider(store esv1.GenericStore) (*esv1.WebhookProvider, error) {
 	return spc.Provider.Webhook, nil
 }
 
+func (w *WebHook) getStoreSecret(ctx context.Context, ref esmeta.SecretKeySelector) (*corev1.Secret, error) {
+	ke := client.ObjectKey{
+		Name: ref.Name,
+		Namespace: w.namespace,
+	}
+	if w.store.GetObjectKind().GroupVersionKind().Kind == esv1.ClusterSecretStoreKind {
+		if ref.Namespace == nil {
+			return nil, fmt.Errorf("no namespace on ClusterSecretStore webhook secret %s", ref.Name)
+		}
+		ke.Namespace = *ref.Namespace
+	}
+	secret := &corev1.Secret{}
+	if err := w.kube.Get(ctx, ke, secret); err != nil {
+		return nil, fmt.Errorf("Failed to get clustersecretstore webhook secret %s: %w", ref.Name, err)
+	}
+	return secret, nil
+}
+
 func (w *WebHook) GetSecret(ctx context.Context, ref esv1.ExternalSecretDataRemoteRef) ([]byte, error) {
 	prov, err := getProvider(w.store)
 	if err != nil {
@@ -86,7 +104,20 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1.ExternalSecretDataRemo
 			"key": url.QueryEscape(ref.Key),
 		},
 	}
-	// TODO: Extra secrets
+	if prov.Secrets != nil {
+		for _, secref := range prov.Secrets {
+			if _, ok := data[secref.Name]; !ok {
+				data[secref.Name] = make(map[string]string)
+			}
+			secret, err := w.getStoreSecret(ctx, secref.SecretRef)
+			if err != nil {
+				return nil, err
+			}
+			for sKey, sVal := range secret.Data {
+				data[secref.Name][sKey] = string(sVal)
+			}
+		}
+	}
 	method := prov.Method
 	if method == "" {
 		method = "GET"
@@ -110,7 +141,6 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1.ExternalSecretDataRemo
 			if err != nil {
 				return nil, fmt.Errorf("Failed to parse header %s: %w", hKey, err)
 			}
-			log.Info("Adding header", "header", hKey, "value", hValue)
 			req.Header.Add(hKey, hValue)
 		}
 	}

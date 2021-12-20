@@ -23,6 +23,7 @@ import (
 	"bytes"
 	tpl "text/template"
 	"github.com/external-secrets/external-secrets/pkg/template"
+	"github.com/Masterminds/sprig"
 
 	"net/url"
 	"net/http"
@@ -155,20 +156,20 @@ func (w *WebHook) Close(ctx context.Context) error {
 	return nil
 }
 
-func executeTemplateString(template string, data map[string]map[string]string) (string, error) {
-	result, err := executeTemplate(template, data)
+func executeTemplateString(tmpl string, data map[string]map[string]string) (string, error) {
+	result, err := executeTemplate(tmpl, data)
 	if err != nil {
 		return "", err
 	}
 	return result.String(), nil
 }
 
-func executeTemplate(template string, data map[string]map[string]string) (bytes.Buffer, error) {
+func executeTemplate(tmpl string, data map[string]map[string]string) (bytes.Buffer, error) {
 	var result bytes.Buffer
-	if template == "" {
+	if tmpl == "" {
 		return result, nil
 	}
-	urlt, err := tpl.New("webhooktemplate").Funcs(template.FuncMap()).Parse(template)
+	urlt, err := tpl.New("webhooktemplate").Funcs(sprig.TxtFuncMap()).Funcs(template.FuncMap()).Parse(tmpl)
 	if err != nil {
 		return result, err
 	}

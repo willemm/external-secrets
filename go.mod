@@ -41,6 +41,9 @@ require (
 	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
 	github.com/IBM/go-sdk-core/v5 v5.5.0
 	github.com/IBM/secrets-manager-go-sdk v1.0.23
+	github.com/Masterminds/goutils v1.1.1 // indirect
+	github.com/Masterminds/semver v1.5.0 // indirect
+	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/PaesslerAG/jsonpath v0.1.1
 	github.com/akeylesslabs/akeyless-go-cloud-id v0.3.2
 	github.com/akeylesslabs/akeyless-go/v2 v2.5.11
@@ -60,6 +63,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault // indirect
 	github.com/hashicorp/vault/api v1.0.5-0.20210224012239-b540be4b7ec4
+	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/kr/pretty v0.2.1 // indirect
 	github.com/lestrrat-go/jwx v1.2.1
 	github.com/onsi/ginkgo v1.16.5

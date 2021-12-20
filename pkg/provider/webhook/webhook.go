@@ -17,6 +17,7 @@ package webhook
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
@@ -186,9 +187,8 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 }
 
 func (w *WebHook) getHttpClient(ctx context.Context, provider *esv1alpha1.WebhookProvider) (*http.Client, error) {
-	client := &http.Client{}
 	if len(provider.CABundle) == 0 && provider.CAProvider == nil {
-		return client, nil
+		return &http.Client{}, nil
 	}
 	caCertPool := x509.NewCertPool()
 	if len(provider.CABundle) > 0 {
@@ -225,10 +225,9 @@ func (w *WebHook) getHttpClient(ctx context.Context, provider *esv1alpha1.Webhoo
 		}
 	}
 
-	if transport, ok := client.Transport.(*http.Transport); ok {
-		transport.TLSClientConfig.RootCAs = caCertPool
-	}
-	return client, nil
+	tlsConf := &tls.Config{RootCAs: caCertPool}
+	tr := &http.Transport{TLSClientConfig: tlsConf}
+	return &http.Client{Transport: tr}, nil
 }
 
 func (w *WebHook) getCertFromSecret(provider *esv1alpha1.WebhookProvider) ([]byte, error) {

@@ -39,8 +39,45 @@ type WebhookProvider struct {
 	Result WebhookResult `json:"result"`
 
 	// Secrets to fill in templates
+	// These secrets will be passed to the templating function as key value pairs under the given name
 	// +optional
 	Secrets []WebhookSecret `json:"secrets,omitempty"`
+
+	// PEM encoded CA bundle used to validate webhook server certificate. Only used
+	// if the Server URL is using HTTPS protocol. This parameter is ignored for
+	// plain HTTP protocol connection. If not set the system root certificates
+	// are used to validate the TLS connection.
+	// +optional
+	CABundle []byte `json:"caBundle,omitempty"`
+
+	// The provider for the CA bundle to use to validate webhook server certificate.
+	// +optional
+	CAProvider *WebhookCAProvider `json:"caProvider,omitempty"`
+}
+
+type WebhookCAProviderType string
+
+const (
+	WebhookCAProviderTypeSecret    WebhookCAProviderType = "Secret"
+	WebhookCAProviderTypeConfigMap WebhookCAProviderType = "ConfigMap"
+)
+
+// Defines a location to fetch the cert for the webhook provider from.
+type WebhookCAProvider struct {
+	// The type of provider to use such as "Secret", or "ConfigMap".
+	// +kubebuilder:validation:Enum="Secret";"ConfigMap"
+	Type WebhookCAProviderType `json:"type"`
+
+	// The name of the object located at the provider type.
+	Name string `json:"name"`
+
+	// The key the value inside of the provider type to use, only used with "Secret" type
+	// +kubebuilder:validation:Optional
+	Key string `json:"key,omitempty"`
+
+	// The namespace the Provider type is in.
+	// +optional
+	Namespace *string `json:"namespace,omitempty"`
 }
 
 type WebhookResult struct {

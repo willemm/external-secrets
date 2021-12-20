@@ -51,7 +51,7 @@ var tplFuncs = tpl.FuncMap{
 	"lower":    strings.ToLower,
 }
 
-// So other templating calls can use the same extra functions
+// So other templating calls can use the same extra functions.
 func FuncMap() tpl.FuncMap {
 	return tplFuncs
 }

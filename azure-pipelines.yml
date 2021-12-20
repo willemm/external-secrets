@@ -8,6 +8,6 @@ resources:
     name: Stater/devops-pipelines
 
 jobs:
-- template: /pipelines/jobs/docker-image.yml@templatesRepo
+- template: /jobs/build/docker-image.yml@templatesRepo
   parameters:
     tag: "v0.3.10-$(Build.BuildId)"

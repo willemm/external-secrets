@@ -1,4 +1,4 @@
-triggers:
+trigger:
   - feat/generic-webhook
 
 resources:

@@ -25,7 +25,7 @@ type WebhookProvider struct {
 	Method string `json:"method,omitempty"`
 
 	// Webhook url to call
-	Url string `json:"url"`
+	URL string `json:"url"`
 
 	// Headers
 	// +optional
@@ -83,7 +83,7 @@ type WebhookCAProvider struct {
 type WebhookResult struct {
 	// Json path of return value
 	// +optional
-	JsonPath string `json:"jsonPath,omitempty"`
+	JSONPath string `json:"jsonPath,omitempty"`
 }
 
 type WebhookSecret struct {

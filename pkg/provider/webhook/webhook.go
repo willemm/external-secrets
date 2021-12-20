@@ -30,7 +30,6 @@ import (
 	"github.com/Masterminds/sprig"
 	"github.com/PaesslerAG/jsonpath"
 	corev1 "k8s.io/api/core/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	esv1alpha1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1"
@@ -49,10 +48,6 @@ type WebHook struct {
 	namespace string
 	storeKind string
 }
-
-var (
-	log = ctrl.Log.WithName("webhook")
-)
 
 func init() {
 	schema.Register(&Provider{}, &esv1alpha1.SecretStoreProvider{
@@ -73,7 +68,7 @@ func (p *Provider) NewClient(ctx context.Context, store esv1alpha1.GenericStore,
 func getProvider(store esv1alpha1.GenericStore) (*esv1alpha1.WebhookProvider, error) {
 	spc := store.GetSpec()
 	if spc == nil || spc.Provider == nil || spc.Provider.Webhook == nil {
-		return nil, fmt.Errorf("Missing store provider webhook")
+		return nil, fmt.Errorf("missing store provider webhook")
 	}
 	return spc.Provider.Webhook, nil
 }
@@ -91,23 +86,78 @@ func (w *WebHook) getStoreSecret(ctx context.Context, ref esmeta.SecretKeySelect
 	}
 	secret := &corev1.Secret{}
 	if err := w.kube.Get(ctx, ke, secret); err != nil {
-		return nil, fmt.Errorf("Failed to get clustersecretstore webhook secret %s: %w", ref.Name, err)
+		return nil, fmt.Errorf("failed to get clustersecretstore webhook secret %s: %w", ref.Name, err)
 	}
 	return secret, nil
 }
 
 func (w *WebHook) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDataRemoteRef) ([]byte, error) {
-	prov, err := getProvider(w.store)
+	provider, err := getProvider(w.store)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get store: %w", err)
+		return nil, fmt.Errorf("failed to get store: %w", err)
 	}
+	result, err := w.getWebhookData(ctx, provider, ref.Key)
+	if err != nil {
+		return nil, err
+	}
+	if provider.Result.JSONPath != "" {
+		jsondata := interface{}(nil)
+		if err := json.Unmarshal(result, &jsondata); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+		jsondata, err = jsonpath.Get(provider.Result.JSONPath, jsondata)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse response (path): %w", err)
+		}
+		jsonvalue, ok := jsondata.(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse response (wrong type)")
+		}
+		return []byte(jsonvalue), nil
+	}
+
+	return result, nil
+}
+
+func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecretDataRemoteRef) (map[string][]byte, error) {
+	provider, err := getProvider(w.store)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get store: %w", err)
+	}
+	result, err := w.getWebhookData(ctx, provider, ref.Key)
+	if err != nil {
+		return nil, err
+	}
+	if provider.Result.JSONPath != "" {
+		jsondata := interface{}(nil)
+		if err := json.Unmarshal(result, &jsondata); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+		jsondata, err = jsonpath.Get(provider.Result.JSONPath, jsondata)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse response (path): %w", err)
+		}
+		jsonvalue, ok := jsondata.(map[string]string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse response (wrong type)")
+		}
+		values := make(map[string][]byte)
+		for rKey, rValue := range jsonvalue {
+			values[rKey] = []byte(rValue)
+		}
+		return values, nil
+	}
+	return nil, fmt.Errorf("webhook fromdata without jsonPath not supported")
+}
+
+func (w *WebHook) getWebhookData(ctx context.Context, provider *esv1alpha1.WebhookProvider, key string) ([]byte, error) {
 	data := map[string]map[string]string{
 		"remoteRef": {
-			"key": url.QueryEscape(ref.Key),
+			"key": url.QueryEscape(key),
 		},
 	}
-	if prov.Secrets != nil {
-		for _, secref := range prov.Secrets {
+	if provider.Secrets != nil {
+		for _, secref := range provider.Secrets {
 			if _, ok := data[secref.Name]; !ok {
 				data[secref.Name] = make(map[string]string)
 			}
@@ -120,73 +170,49 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDa
 			}
 		}
 	}
-	method := prov.Method
+	method := provider.Method
 	if method == "" {
 		method = "GET"
 	}
-	url, err := executeTemplateString(prov.Url, data)
+	url, err := executeTemplateString(provider.URL, data)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse url: %w", err)
+		return nil, fmt.Errorf("failed to parse url: %w", err)
 	}
-	body, err := executeTemplate(prov.Body, data)
+	body, err := executeTemplate(provider.Body, data)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse body: %w", err)
+		return nil, fmt.Errorf("failed to parse body: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, url, &body)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to call endpoint: %w", err)
+		return nil, fmt.Errorf("failed to call endpoint: %w", err)
 	}
-	if prov.Headers != nil {
-		for hKey, hValueTpl := range prov.Headers {
+	if provider.Headers != nil {
+		for hKey, hValueTpl := range provider.Headers {
 			hValue, err := executeTemplateString(hValueTpl, data)
 			if err != nil {
-				return nil, fmt.Errorf("Failed to parse header %s: %w", hKey, err)
+				return nil, fmt.Errorf("failed to parse header %s: %w", hKey, err)
 			}
 			req.Header.Add(hKey, hValue)
 		}
 	}
 
-	client, err := w.getHttpClient(ctx, prov)
+	client, err := w.getHTTPClient(ctx, provider)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to call endpoint: %w", err)
+		return nil, fmt.Errorf("failed to call endpoint: %w", err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to call endpoint: %w", err)
+		return nil, fmt.Errorf("failed to call endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("Endpoint gave error %s", resp.Status)
+		return nil, fmt.Errorf("endpoint gave error %s", resp.Status)
 	}
-	result, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to read response: %w", err)
-	}
-	if prov.Result.JsonPath != "" {
-		jsondata := interface{}(nil)
-		if err := json.Unmarshal(result, &jsondata); err != nil {
-			return nil, fmt.Errorf("Failed to parse response: %w", err)
-		}
-		jsondata, err = jsonpath.Get(prov.Result.JsonPath, jsondata)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to parse response (path): %w", err)
-		}
-		jsonvalue, ok := jsondata.(string)
-		if !ok {
-			return nil, fmt.Errorf("Failed to parse response (wrong type)")
-		}
-		return []byte(jsonvalue), nil
-	}
-
-	return result, nil
+	return io.ReadAll(resp.Body)
 }
 
-func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecretDataRemoteRef) (map[string][]byte, error) {
-	return nil, fmt.Errorf("GetSecretMap not implemented")
-}
-
-func (w *WebHook) getHttpClient(ctx context.Context, provider *esv1alpha1.WebhookProvider) (*http.Client, error) {
+func (w *WebHook) getHTTPClient(_ context.Context, provider *esv1alpha1.WebhookProvider) (*http.Client, error) {
 	if len(provider.CABundle) == 0 && provider.CAProvider == nil {
 		return &http.Client{}, nil
 	}
@@ -194,12 +220,12 @@ func (w *WebHook) getHttpClient(ctx context.Context, provider *esv1alpha1.Webhoo
 	if len(provider.CABundle) > 0 {
 		ok := caCertPool.AppendCertsFromPEM(provider.CABundle)
 		if !ok {
-			return nil, fmt.Errorf("Failed to append cabundle")
+			return nil, fmt.Errorf("failed to append cabundle")
 		}
 	}
 
 	if provider.CAProvider != nil && w.storeKind == esv1alpha1.ClusterSecretStoreKind && provider.CAProvider.Namespace == nil {
-		return nil, fmt.Errorf("Missing namespace on CAProvider secret")
+		return nil, fmt.Errorf("missing namespace on CAProvider secret")
 	}
 
 	if provider.CAProvider != nil {
@@ -212,7 +238,7 @@ func (w *WebHook) getHttpClient(ctx context.Context, provider *esv1alpha1.Webhoo
 		case esv1alpha1.WebhookCAProviderTypeConfigMap:
 			cert, err = w.getCertFromConfigMap(provider)
 		default:
-			return nil, fmt.Errorf("Unknown caprovider type: %s", provider.CAProvider.Type)
+			return nil, fmt.Errorf("unknown caprovider type: %s", provider.CAProvider.Type)
 		}
 
 		if err != nil {
@@ -221,11 +247,14 @@ func (w *WebHook) getHttpClient(ctx context.Context, provider *esv1alpha1.Webhoo
 
 		ok := caCertPool.AppendCertsFromPEM(cert)
 		if !ok {
-			return nil, fmt.Errorf("Failed to append cabundle")
+			return nil, fmt.Errorf("failed to append cabundle")
 		}
 	}
 
-	tlsConf := &tls.Config{RootCAs: caCertPool}
+	tlsConf := &tls.Config{
+		RootCAs:    caCertPool,
+		MinVersion: tls.VersionTLS12,
+	}
 	tr := &http.Transport{TLSClientConfig: tlsConf}
 	return &http.Client{Transport: tr}, nil
 }
@@ -287,12 +316,12 @@ func (w *WebHook) getCertFromConfigMap(provider *esv1alpha1.WebhookProvider) ([]
 	ctx := context.Background()
 	err := w.kube.Get(ctx, objKey, configMapRef)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get caprovider secret %s: %w", objKey.Name, err)
+		return nil, fmt.Errorf("failed to get caprovider secret %s: %w", objKey.Name, err)
 	}
 
 	val, ok := configMapRef.Data[provider.CAProvider.Key]
 	if !ok {
-		return nil, fmt.Errorf("Failed to get caprovider configmap %s: %w", objKey.Name, provider.CAProvider.Key)
+		return nil, fmt.Errorf("failed to get caprovider configmap %s -> %s", objKey.Name, provider.CAProvider.Key)
 	}
 
 	return []byte(val), nil

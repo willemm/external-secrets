@@ -1,5 +1,10 @@
 trigger:
-  - feat/generic-webhook
+  branches:
+    include:
+    - feat/generic-webhook
+  tags:
+    include:
+    - '*'
 
 resources:
   repositories:
@@ -10,5 +15,30 @@ resources:
 jobs:
 - template: /jobs/build/docker-image.yml@templatesRepo
   parameters:
-    tag: "v0.3.10-$(Build.BuildId)"
+    ${{ if startsWith(variables['Build.SourceBranch'], 'refs/tags/') }}:
+      tag: ${{ coalesce(replace(variables['Build.SourceBranch'], 'refs/tags/', '')) }}
+    ${{ else }}:
+      tag: "v0.3.10-$(Build.BuildId)"
     buildArgs: "--build-arg GOPROXY=http://pr-art.europe.stater.corp/artifactory/proxy.golang.org"
+- ${{ if startsWith(variables['Build.SourceBranch'], 'refs/tags/') }}:
+  - job: Helm_Package
+    container: stater/data-integration-helm:alpine-3.11-1.0.0
+    pool: "Docker Linux"
+    displayName: Helm Package
+    variables:
+    - group: DevOps.Pipeline.Credentials.HelmPush
+    - name: chartVersion
+      value: ${{ coalesce(replace(variables['Build.SourceBranch'], 'refs/tags/', '')) }}
+    - name: chartName
+      value: external-secrets
+    steps:
+    - script: |
+        helm package deploy/charts/external-secrets --app-version $(chartVersion) --version $(chartVersion)
+      displayName: Package Chart
+    - script: |
+        curl -u ${username}:${password} -X PUT "${repository}/$(chartName)-$(chartVersion).tgz" -T ./$(chartName)-$(chartVersion).tgz
+      env:
+        username: $(artifactory.helm.username)
+        password: $(artifactory.helm.password)
+        repository: $(artifactory.helm.url)
+      displayName: Publish Chart

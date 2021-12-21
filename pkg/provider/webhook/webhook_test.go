@@ -15,42 +15,93 @@ package webhook
 
 import (
 	"context"
-	"testing"
-	"fmt"
-	"path/filepath"
-	"runtime"
-	"reflect"
 	"net/http"
 	"net/http/httptest"
-	esv1alpha1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1"
+	"strings"
+	"testing"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	esv1alpha1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1"
 )
 
-// assert fails the test if the condition is false.
-func assert(tb testing.TB, condition bool, msg string, v ...interface{}) {
-	if !condition {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Printf("\033[31m%s:%d: "+msg+"\033[39m\n\n", append([]interface{}{filepath.Base(file), line}, v...)...)
-		tb.FailNow()
-	}
+type testCase struct {
+	reason string
+	args   args
+	want   want
 }
 
-// ok fails the test if an err is not nil.
-func ok(tb testing.TB, err error) {
+type args struct {
+	url      string
+	key      string
+	version  string
+	jsonpath string
+	response string
+}
+
+type want struct {
+	path   string
+	err    string
+	result string
+}
+
+func TestWebhookGetSecret(t *testing.T) {
+	testCase := &testCase{
+		reason: "get secret simple",
+		args: args{
+			url:      "/api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}",
+			key:      "testkey",
+			version:  "1",
+			jsonpath: "$.result.thesecret",
+			response: `{"result":{"thesecret":"secret-value"}}`,
+		},
+		want: want{
+			path:   "/api/getsecret?id=testkey&version=1",
+			err:    "",
+			result: "secret-value",
+		},
+	}
+	runTestCase(testCase, t)
+}
+
+func runTestCase(tc *testCase, t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.URL.String() != tc.want.path {
+			t.Errorf("%s: unexpected api path: %s, expected %s", tc.reason, req.URL.String(), tc.want.path)
+		}
+		rw.Write([]byte(tc.args.response))
+	}))
+	defer ts.Close()
+
+	testStore := makeClusterSecretStore(ts.URL+tc.args.url, tc.args.jsonpath)
+	testProv := &Provider{}
+	client, err := testProv.NewClient(context.Background(), testStore, nil, "testnamespace")
 	if err != nil {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Printf("\033[31m%s:%d: unexpected error: %s\033[39m\n\n", filepath.Base(file), line, err.Error())
-		tb.FailNow()
+		t.Errorf("%s: error creating client: %s", tc.reason, err.Error())
+		return
+	}
+
+	testRef := esv1alpha1.ExternalSecretDataRemoteRef{
+		Key:     tc.args.key,
+		Version: tc.args.version,
+	}
+	secret, err := client.GetSecret(context.Background(), testRef)
+	if !errorContains(err, tc.want.err) {
+		t.Errorf("%s: unexpected error: %s (expected '%s')", tc.reason, err.Error(), tc.want.err)
+	}
+	if err == nil && string(secret) != tc.want.result {
+		t.Errorf("%s:unexpected response: %s (expected '%s')", tc.reason, secret, tc.want.result)
 	}
 }
 
-// equals fails the test if exp is not equal to act.
-func equals(tb testing.TB, exp, act interface{}) {
-	if !reflect.DeepEqual(exp, act) {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Printf("\033[31m%s:%d:\n\n\texp: %#v\n\n\tgot: %#v\033[39m\n\n", filepath.Base(file), line, exp, act)
-		tb.FailNow()
+func errorContains(out error, want string) bool {
+	if out == nil {
+		return want == ""
 	}
+	if want == "" {
+		return false
+	}
+	return strings.Contains(out.Error(), want)
 }
 
 func makeClusterSecretStore(url, jsonpath string) *esv1alpha1.ClusterSecretStore {
@@ -65,10 +116,10 @@ func makeClusterSecretStore(url, jsonpath string) *esv1alpha1.ClusterSecretStore
 		Spec: esv1alpha1.SecretStoreSpec{
 			Provider: &esv1alpha1.SecretStoreProvider{
 				Webhook: &esv1alpha1.WebhookProvider{
-					URL:     url,
+					URL: url,
 					Headers: map[string]string{
-						"Content-Type":"application.json",
-						"X-SecretKey":"{{ .remoteRef.key }}",
+						"Content-Type": "application.json",
+						"X-SecretKey":  "{{ .remoteRef.key }}",
 					},
 					Result: esv1alpha1.WebhookResult{
 						JSONPath: jsonpath,
@@ -77,22 +128,4 @@ func makeClusterSecretStore(url, jsonpath string) *esv1alpha1.ClusterSecretStore
 			},
 		},
 	}
-}
-
-func TestWebhookGetSecret(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		equals(t, req.URL.String(), "/getsecret")
-		rw.Write([]byte(`{"testresponse":{"password":"test-secret"}}`))
-	}))
-	defer ts.Close()
-
-	testStore := makeClusterSecretStore(ts.URL+"/getsecret", "$.testresponse.password")
-	testProv := &Provider{}
-	client, err := testProv.NewClient(context.Background(), testStore, nil, "testnamespace")
-	ok(t, err)
-
-	testRef := esv1alpha1.ExternalSecretDataRemoteRef{ }
-	secret, err := client.GetSecret(context.Background(), testRef)
-	ok(t, err)
-	equals(t, string(secret), "test-secret")
 }

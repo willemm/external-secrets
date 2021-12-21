@@ -96,7 +96,7 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDa
 	if err != nil {
 		return nil, fmt.Errorf("failed to get store: %w", err)
 	}
-	result, err := w.getWebhookData(ctx, provider, ref.Key)
+	result, err := w.getWebhookData(ctx, provider, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,7 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 	if err != nil {
 		return nil, fmt.Errorf("failed to get store: %w", err)
 	}
-	result, err := w.getWebhookData(ctx, provider, ref.Key)
+	result, err := w.getWebhookData(ctx, provider, ref)
 	if err != nil {
 		return nil, err
 	}
@@ -150,10 +150,11 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 	return nil, fmt.Errorf("webhook fromdata without jsonPath not supported")
 }
 
-func (w *WebHook) getWebhookData(ctx context.Context, provider *esv1alpha1.WebhookProvider, key string) ([]byte, error) {
+func (w *WebHook) getWebhookData(ctx context.Context, provider *esv1alpha1.WebhookProvider, ref esv1alpha1.ExternalSecretDataRemoteRef) ([]byte, error) {
 	data := map[string]map[string]string{
 		"remoteRef": {
-			"key": url.QueryEscape(key),
+			"key":     url.QueryEscape(ref.Key),
+			"version": url.QueryEscape(ref.Version),
 		},
 	}
 	if provider.Secrets != nil {

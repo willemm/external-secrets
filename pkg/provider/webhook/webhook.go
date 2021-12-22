@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	tpl "text/template"
 
@@ -111,7 +112,7 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDa
 		}
 		jsonvalue, ok := jsondata.(string)
 		if !ok {
-			return nil, fmt.Errorf("failed to get response (wrong type)")
+			return nil, fmt.Errorf("failed to get response (wrong type: %v)", reflect.TypeOf(jsondata))
 		}
 		return []byte(jsonvalue), nil
 	}
@@ -128,8 +129,10 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 	if err != nil {
 		return nil, err
 	}
+	jsondata := interface{}(nil)
+	var jsonvalue map[string]interface{}
+	var ok bool
 	if provider.Result.JSONPath != "" {
-		jsondata := interface{}(nil)
 		if err := yaml.Unmarshal(result, &jsondata); err != nil {
 			return nil, fmt.Errorf("failed to parse response json: %w", err)
 		}
@@ -137,28 +140,38 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 		if err != nil {
 			return nil, fmt.Errorf("failed to get response path %s: %w", provider.Result.JSONPath, err)
 		}
-		jsonvalue, ok := jsondata.(map[string]string)
+		jsonvalue, ok = jsondata.(map[string]interface{})
 		if !ok {
 			jsonstring, ok := jsondata.(string)
 			if !ok {
-				return nil, fmt.Errorf("failed to get response (wrong type)")
+				return nil, fmt.Errorf("failed to get response (wrong type: %v)", reflect.TypeOf(jsondata))
 			}
-			jsonstringdata := interface{}(nil)
-			if err := yaml.Unmarshal([]byte(jsonstring), &jsonstringdata); err != nil {
+			if err := yaml.Unmarshal([]byte(jsonstring), &jsondata); err != nil {
 				return nil, fmt.Errorf("failed to parse data json: %w", err)
 			}
-			jsonvalue, ok = jsondata.(map[string]string)
+			jsonvalue, ok = jsondata.(map[string]interface{})
 			if !ok {
-				return nil, fmt.Errorf("failed to get data (wrong type)")
+				return nil, fmt.Errorf("failed to get response (wrong type in data: %v)", reflect.TypeOf(jsondata))
 			}
 		}
-		values := make(map[string][]byte)
-		for rKey, rValue := range jsonvalue {
-			values[rKey] = []byte(rValue)
+	} else {
+		if err := yaml.Unmarshal(result, &jsondata); err != nil {
+			return nil, fmt.Errorf("failed to parse data json: %w", err)
 		}
-		return values, nil
+		jsonvalue, ok = jsondata.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("failed to get response (wrong type in body: %v)", reflect.TypeOf(jsondata))
+		}
 	}
-	return nil, fmt.Errorf("webhook fromdata without jsonPath not supported")
+	values := make(map[string][]byte)
+	for rKey, rValue := range jsonvalue {
+		jVal, ok := rValue.(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to get response (wrong type: %v)", reflect.TypeOf(rValue))
+		}
+		values[rKey] = []byte(jVal)
+	}
+	return values, nil
 }
 
 func (w *WebHook) getWebhookData(ctx context.Context, provider *esv1alpha1.WebhookProvider, ref esv1alpha1.ExternalSecretDataRemoteRef) ([]byte, error) {

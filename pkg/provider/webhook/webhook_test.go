@@ -46,9 +46,10 @@ type args struct {
 }
 
 type want struct {
-	Path   string `json:"path,omitempty"`
-	Err    string `json:"err,omitempty"`
-	Result string `json:"result,omitempty"`
+	Path      string            `json:"path,omitempty"`
+	Err       string            `json:"err,omitempty"`
+	Result    string            `json:"result,omitempty"`
+	ResultMap map[string]string `json:"resultmap,omitempty"`
 }
 
 var testCases = `
@@ -113,7 +114,7 @@ args:
   response: '{"result":{"thesecret":{"one":"secret-value"}}}'
 want:
   path: /api/getsecret?id=testkey&version=1
-  err: failed to get response (wrong type)
+  err: failed to get response (wrong type
 ---
 case: good plaintext
 args:
@@ -123,7 +124,6 @@ args:
   response: secret-value
 want:
   path: /api/getsecret?id=testkey&version=1
-  err: ""
   result: secret-value
 ---
 case: good json
@@ -135,8 +135,59 @@ args:
   response: '{"result":{"thesecret":"secret-value"}}'
 want:
   path: /api/getsecret?id=testkey&version=1
-  err: ""
   result: secret-value
+---
+case: good json map
+args:
+  url: /api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}
+  key: testkey
+  version: 1
+  jsonpath: $.result
+  response: '{"result":{"thesecret":"secret-value","alsosecret":"another-value"}}'
+want:
+  path: /api/getsecret?id=testkey&version=1
+  resultmap:
+    thesecret: secret-value
+    alsosecret: another-value
+---
+case: good json map string
+args:
+  url: /api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}
+  key: testkey
+  version: 1
+  response: '{"thesecret":"secret-value","alsosecret":"another-value"}'
+want:
+  path: /api/getsecret?id=testkey&version=1
+  resultmap:
+    thesecret: secret-value
+    alsosecret: another-value
+---
+case: error json map string
+args:
+  url: /api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}
+  key: testkey
+  version: 1
+  response: 'some simple string'
+want:
+  path: /api/getsecret?id=testkey&version=1
+  err: failed to get response (wrong type in body
+  resultmap:
+    thesecret: secret-value
+    alsosecret: another-value
+---
+case: error json map
+args:
+  url: /api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}
+  key: testkey
+  version: 1
+  jsonpath: $.result.thesecret
+  response: '{"result":{"thesecret":"secret-value","alsosecret":"another-value"}}'
+want:
+  path: /api/getsecret?id=testkey&version=1
+  err: failed to get response (wrong type in data
+  resultmap:
+    thesecret: secret-value
+    alsosecret: another-value
 `
 
 func TestWebhookGetSecret(t *testing.T) {
@@ -178,16 +229,37 @@ func runTestCase(tc testCase, t *testing.T) {
 		Key:     tc.Args.Key,
 		Version: tc.Args.Version,
 	}
-	secret, err := client.GetSecret(context.Background(), testRef)
-	errStr := ""
-	if err != nil {
-		errStr = err.Error()
-	}
-	if !strings.Contains(errStr, tc.Want.Err) {
-		t.Errorf("%s: unexpected error: '%s' (expected '%s')", tc.Case, errStr, tc.Want.Err)
-	}
-	if err == nil && string(secret) != tc.Want.Result {
-		t.Errorf("%s: unexpected response: '%s' (expected '%s')", tc.Case, secret, tc.Want.Result)
+	if tc.Want.ResultMap != nil {
+		secretmap, err := client.GetSecretMap(context.Background(), testRef)
+		errStr := ""
+		if err != nil {
+			errStr = err.Error()
+		}
+		if (tc.Want.Err == "") != (errStr == "") || !strings.Contains(errStr, tc.Want.Err) {
+			t.Errorf("%s: unexpected error: '%s' (expected '%s')", tc.Case, errStr, tc.Want.Err)
+		}
+		if err == nil {
+			for wantkey, wantval := range tc.Want.ResultMap {
+				gotval, ok := secretmap[wantkey]
+				if !ok {
+					t.Errorf("%s: unexpected response: wanted key '%s' not found", tc.Case, wantkey)
+				} else if string(gotval) != wantval {
+					t.Errorf("%s: unexpected response: key '%s' = '%s' (expected '%s')", tc.Case, wantkey, wantval, gotval)
+				}
+			}
+		}
+	} else {
+		secret, err := client.GetSecret(context.Background(), testRef)
+		errStr := ""
+		if err != nil {
+			errStr = err.Error()
+		}
+		if !strings.Contains(errStr, tc.Want.Err) {
+			t.Errorf("%s: unexpected error: '%s' (expected '%s')", tc.Case, errStr, tc.Want.Err)
+		}
+		if err == nil && string(secret) != tc.Want.Result {
+			t.Errorf("%s: unexpected response: '%s' (expected '%s')", tc.Case, secret, tc.Want.Result)
+		}
 	}
 }
 

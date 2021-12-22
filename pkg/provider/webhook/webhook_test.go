@@ -22,6 +22,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,8 +38,9 @@ type testCase struct {
 
 type args struct {
 	URL        string `json:"url,omitempty"`
-	Key        string `json:"key,omitempty"`
 	Body       string `json:"body,omitempty"`
+	Timeout    string `json:"timeout,omitempty"`
+	Key        string `json:"key,omitempty"`
 	Version    string `json:"version,omitempty"`
 	JSONPath   string `json:"jsonpath,omitempty"`
 	Response   string `json:"response,omitempty"`
@@ -115,6 +117,17 @@ args:
 want:
   path: /api/getsecret?id=testkey&version=1
   err: failed to get response (wrong type
+---
+case: error timeout
+args:
+  url: /api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}
+  key: testkey
+  version: 1
+  response: secret-value
+  timeout: 0.01ms
+want:
+  path: /api/getsecret?id=testkey&version=1
+  err: context deadline exceeded
 ---
 case: good plaintext
 args:
@@ -218,6 +231,14 @@ func runTestCase(tc testCase, t *testing.T) {
 	defer ts.Close()
 
 	testStore := makeClusterSecretStore(ts.URL, tc.Args)
+	if tc.Args.Timeout != "" {
+		dur, err := time.ParseDuration(tc.Args.Timeout)
+		if err != nil {
+			t.Errorf("%s: error parsing timeout '%s': %s", tc.Case, tc.Args.Timeout, err.Error())
+			return
+		}
+		testStore.Spec.Provider.Webhook.Timeout = &metav1.Duration{Duration: dur}
+	}
 	testProv := &Provider{}
 	client, err := testProv.NewClient(context.Background(), testStore, nil, "testnamespace")
 	if err != nil {
@@ -264,7 +285,7 @@ func runTestCase(tc testCase, t *testing.T) {
 }
 
 func makeClusterSecretStore(url string, args args) *esv1alpha1.ClusterSecretStore {
-	return &esv1alpha1.ClusterSecretStore{
+	store := &esv1alpha1.ClusterSecretStore{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "ClusterSecretStore",
 		},
@@ -288,4 +309,5 @@ func makeClusterSecretStore(url string, args args) *esv1alpha1.ClusterSecretStor
 			},
 		},
 	}
+	return store
 }

@@ -1310,6 +1310,11 @@ func (in *WebhookProvider) DeepCopyInto(out *WebhookProvider) {
 			(*out)[key] = val
 		}
 	}
+	if in.Timeout != nil {
+		in, out := &in.Timeout, &out.Timeout
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	out.Result = in.Result
 	if in.Secrets != nil {
 		in, out := &in.Secrets, &out.Secrets

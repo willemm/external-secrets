@@ -237,50 +237,53 @@ func (w *WebHook) getWebhookData(ctx context.Context, provider *esv1alpha1.Webho
 }
 
 func (w *WebHook) getHTTPClient(_ context.Context, provider *esv1alpha1.WebhookProvider) (*http.Client, error) {
-	if len(provider.CABundle) == 0 && provider.CAProvider == nil {
-		return &http.Client{}, nil
+	client := &http.Client{}
+	if provider.Timeout != nil {
+		client.Timeout = provider.Timeout.Duration
 	}
-	caCertPool := x509.NewCertPool()
-	if len(provider.CABundle) > 0 {
-		ok := caCertPool.AppendCertsFromPEM(provider.CABundle)
-		if !ok {
-			return nil, fmt.Errorf("failed to append cabundle")
-		}
-	}
-
-	if provider.CAProvider != nil && w.storeKind == esv1alpha1.ClusterSecretStoreKind && provider.CAProvider.Namespace == nil {
-		return nil, fmt.Errorf("missing namespace on CAProvider secret")
-	}
-
-	if provider.CAProvider != nil {
-		var cert []byte
-		var err error
-
-		switch provider.CAProvider.Type {
-		case esv1alpha1.WebhookCAProviderTypeSecret:
-			cert, err = w.getCertFromSecret(provider)
-		case esv1alpha1.WebhookCAProviderTypeConfigMap:
-			cert, err = w.getCertFromConfigMap(provider)
-		default:
-			return nil, fmt.Errorf("unknown caprovider type: %s", provider.CAProvider.Type)
+	if len(provider.CABundle) != 0 || provider.CAProvider != nil {
+		caCertPool := x509.NewCertPool()
+		if len(provider.CABundle) > 0 {
+			ok := caCertPool.AppendCertsFromPEM(provider.CABundle)
+			if !ok {
+				return nil, fmt.Errorf("failed to append cabundle")
+			}
 		}
 
-		if err != nil {
-			return nil, err
+		if provider.CAProvider != nil && w.storeKind == esv1alpha1.ClusterSecretStoreKind && provider.CAProvider.Namespace == nil {
+			return nil, fmt.Errorf("missing namespace on CAProvider secret")
 		}
 
-		ok := caCertPool.AppendCertsFromPEM(cert)
-		if !ok {
-			return nil, fmt.Errorf("failed to append cabundle")
-		}
-	}
+		if provider.CAProvider != nil {
+			var cert []byte
+			var err error
 
-	tlsConf := &tls.Config{
-		RootCAs:    caCertPool,
-		MinVersion: tls.VersionTLS12,
+			switch provider.CAProvider.Type {
+			case esv1alpha1.WebhookCAProviderTypeSecret:
+				cert, err = w.getCertFromSecret(provider)
+			case esv1alpha1.WebhookCAProviderTypeConfigMap:
+				cert, err = w.getCertFromConfigMap(provider)
+			default:
+				return nil, fmt.Errorf("unknown caprovider type: %s", provider.CAProvider.Type)
+			}
+
+			if err != nil {
+				return nil, err
+			}
+
+			ok := caCertPool.AppendCertsFromPEM(cert)
+			if !ok {
+				return nil, fmt.Errorf("failed to append cabundle")
+			}
+		}
+
+		tlsConf := &tls.Config{
+			RootCAs:    caCertPool,
+			MinVersion: tls.VersionTLS12,
+		}
+		client.Transport = &http.Transport{TLSClientConfig: tlsConf}
 	}
-	tr := &http.Transport{TLSClientConfig: tlsConf}
-	return &http.Client{Transport: tr}, nil
+	return client, nil
 }
 
 func (w *WebHook) getCertFromSecret(provider *esv1alpha1.WebhookProvider) ([]byte, error) {

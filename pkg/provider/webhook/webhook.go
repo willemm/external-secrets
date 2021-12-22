@@ -103,15 +103,15 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDa
 	if provider.Result.JSONPath != "" {
 		jsondata := interface{}(nil)
 		if err := yaml.Unmarshal(result, &jsondata); err != nil {
-			return nil, fmt.Errorf("failed to parse response: %w", err)
+			return nil, fmt.Errorf("failed to parse response json: %w", err)
 		}
 		jsondata, err = jsonpath.Get(provider.Result.JSONPath, jsondata)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse response (path): %w", err)
+			return nil, fmt.Errorf("failed to get response path %s: %w", provider.Result.JSONPath, err)
 		}
 		jsonvalue, ok := jsondata.(string)
 		if !ok {
-			return nil, fmt.Errorf("failed to parse response (wrong type)")
+			return nil, fmt.Errorf("failed to get response (wrong type)")
 		}
 		return []byte(jsonvalue), nil
 	}
@@ -131,15 +131,26 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 	if provider.Result.JSONPath != "" {
 		jsondata := interface{}(nil)
 		if err := yaml.Unmarshal(result, &jsondata); err != nil {
-			return nil, fmt.Errorf("failed to parse response: %w", err)
+			return nil, fmt.Errorf("failed to parse response json: %w", err)
 		}
 		jsondata, err = jsonpath.Get(provider.Result.JSONPath, jsondata)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse response (path): %w", err)
+			return nil, fmt.Errorf("failed to get response path %s: %w", provider.Result.JSONPath, err)
 		}
 		jsonvalue, ok := jsondata.(map[string]string)
 		if !ok {
-			return nil, fmt.Errorf("failed to parse response (wrong type)")
+			jsonstring, ok := jsondata.(string)
+			if !ok {
+				return nil, fmt.Errorf("failed to get response (wrong type)")
+			}
+			jsonstringdata := interface{}(nil)
+			if err := yaml.Unmarshal([]byte(jsonstring), &jsonstringdata); err != nil {
+				return nil, fmt.Errorf("failed to parse data json: %w", err)
+			}
+			jsonvalue, ok = jsondata.(map[string]string)
+			if !ok {
+				return nil, fmt.Errorf("failed to get data (wrong type)")
+			}
 		}
 		values := make(map[string][]byte)
 		for rKey, rValue := range jsonvalue {
@@ -186,7 +197,7 @@ func (w *WebHook) getWebhookData(ctx context.Context, provider *esv1alpha1.Webho
 
 	req, err := http.NewRequestWithContext(ctx, method, url, &body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to call endpoint: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	if provider.Headers != nil {
 		for hKey, hValueTpl := range provider.Headers {

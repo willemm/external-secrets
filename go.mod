@@ -88,6 +88,7 @@ require (
 	google.golang.org/api v0.45.0
 	google.golang.org/genproto v0.0.0-20210413151531-c14fb6ef47c3
 	google.golang.org/grpc v1.43.0
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	grpc.go4.org v0.0.0-20170609214715-11d0a25b4919
 	honnef.co/go/tools v0.1.4 // indirect
 	k8s.io/api v0.21.3

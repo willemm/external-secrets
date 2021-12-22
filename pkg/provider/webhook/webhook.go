@@ -19,7 +19,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,6 +28,7 @@ import (
 
 	"github.com/Masterminds/sprig"
 	"github.com/PaesslerAG/jsonpath"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -102,7 +102,7 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDa
 	}
 	if provider.Result.JSONPath != "" {
 		jsondata := interface{}(nil)
-		if err := json.Unmarshal(result, &jsondata); err != nil {
+		if err := yaml.Unmarshal(result, &jsondata); err != nil {
 			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 		jsondata, err = jsonpath.Get(provider.Result.JSONPath, jsondata)
@@ -130,7 +130,7 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 	}
 	if provider.Result.JSONPath != "" {
 		jsondata := interface{}(nil)
-		if err := json.Unmarshal(result, &jsondata); err != nil {
+		if err := yaml.Unmarshal(result, &jsondata); err != nil {
 			return nil, fmt.Errorf("failed to parse response: %w", err)
 		}
 		jsondata, err = jsonpath.Get(provider.Result.JSONPath, jsondata)

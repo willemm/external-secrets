@@ -20,77 +20,88 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	esv1alpha1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1"
+
+	"fmt"
 )
 
 type testCase struct {
-	reason string
-	args   args
-	want   want
+	Reason string `json:"reason,omitempty"`
+	Args   args   `json:"args"`
+	Want   want   `json:"want"`
 }
 
 type args struct {
-	url      string
-	key      string
-	version  string
-	jsonpath string
-	response string
+	URL      string `json:"url"`
+	Key      string `json:"key"`
+	Version  string `json:"version,omitempty"`
+	JSONPath string `json:"jsonpath,omitempty"`
+	Response string `json:"response,omitempty"`
 }
 
 type want struct {
-	path   string
-	err    string
-	result string
+	Path   string `json:"path"`
+	Err    string `json:"err,omitempty"`
+	Result string `json:"result,omitempty"`
+}
+
+var testCases = map[string]string{
+	"get secret simple": `
+args:
+  url: /api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}
+  key: testkey
+  version: "1"
+  jsonpath: $.result.thesecret
+  response: '{"result":{"thesecret":"secret-value"}}'
+want:
+  path: /api/getsecret?id=testkey&version=1
+  err: ""
+  result: secret-value
+`,
 }
 
 func TestWebhookGetSecret(t *testing.T) {
-	testCase := &testCase{
-		reason: "get secret simple",
-		args: args{
-			url:      "/api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}",
-			key:      "testkey",
-			version:  "1",
-			jsonpath: "$.result.thesecret",
-			response: `{"result":{"thesecret":"secret-value"}}`,
-		},
-		want: want{
-			path:   "/api/getsecret?id=testkey&version=1",
-			err:    "",
-			result: "secret-value",
-		},
+	for testname, testcaseyaml := range testCases {
+		testcase := &testCase{}
+		yaml.Unmarshal([]byte(testcaseyaml), testcase)
+		if testcase.Reason == "" {
+			testcase.Reason = testname
+		}
+		runTestCase(testcase, t)
 	}
-	runTestCase(testCase, t)
 }
 
 func runTestCase(tc *testCase, t *testing.T) {
+	// Start a new server for every test case because the server wants to check the expected api path
 	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		if req.URL.String() != tc.want.path {
-			t.Errorf("%s: unexpected api path: %s, expected %s", tc.reason, req.URL.String(), tc.want.path)
+		if tc.Want.Path != "" && req.URL.String() != tc.Want.Path {
+			t.Errorf("%s: unexpected api path: %s, expected %s", tc.Reason, req.URL.String(), tc.Want.Path)
 		}
-		rw.Write([]byte(tc.args.response))
+		rw.Write([]byte(tc.Args.Response))
 	}))
 	defer ts.Close()
 
-	testStore := makeClusterSecretStore(ts.URL+tc.args.url, tc.args.jsonpath)
+	testStore := makeClusterSecretStore(ts.URL+tc.Args.URL, tc.Args.JSONPath)
 	testProv := &Provider{}
 	client, err := testProv.NewClient(context.Background(), testStore, nil, "testnamespace")
 	if err != nil {
-		t.Errorf("%s: error creating client: %s", tc.reason, err.Error())
+		t.Errorf("%s: error creating client: %s", tc.Reason, err.Error())
 		return
 	}
 
 	testRef := esv1alpha1.ExternalSecretDataRemoteRef{
-		Key:     tc.args.key,
-		Version: tc.args.version,
+		Key:     tc.Args.Key,
+		Version: tc.Args.Version,
 	}
 	secret, err := client.GetSecret(context.Background(), testRef)
-	if !errorContains(err, tc.want.err) {
-		t.Errorf("%s: unexpected error: %s (expected '%s')", tc.reason, err.Error(), tc.want.err)
+	if !errorContains(err, tc.Want.Err) {
+		t.Errorf("%s: unexpected error: %s (expected '%s')", tc.Reason, err.Error(), tc.Want.Err)
 	}
-	if err == nil && string(secret) != tc.want.result {
-		t.Errorf("%s:unexpected response: %s (expected '%s')", tc.reason, secret, tc.want.result)
+	if err == nil && string(secret) != tc.Want.Result {
+		t.Errorf("%s:unexpected response: %s (expected '%s')", tc.Reason, secret, tc.Want.Result)
 	}
 }
 

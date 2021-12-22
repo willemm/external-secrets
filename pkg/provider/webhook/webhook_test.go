@@ -17,39 +17,40 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"io"
 	"strings"
+	"bytes"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	esv1alpha1 "github.com/external-secrets/external-secrets/apis/externalsecrets/v1alpha1"
-
-	"fmt"
+	// "fmt"
 )
 
 type testCase struct {
-	Reason string `json:"reason,omitempty"`
+	Case   string `json:"case,omitempty"`
 	Args   args   `json:"args"`
 	Want   want   `json:"want"`
 }
 
 type args struct {
-	URL      string `json:"url"`
-	Key      string `json:"key"`
+	URL      string `json:"url,omitempty"`
+	Key      string `json:"key,omitempty"`
 	Version  string `json:"version,omitempty"`
 	JSONPath string `json:"jsonpath,omitempty"`
 	Response string `json:"response,omitempty"`
 }
 
 type want struct {
-	Path   string `json:"path"`
+	Path   string `json:"path,omitempty"`
 	Err    string `json:"err,omitempty"`
 	Result string `json:"result,omitempty"`
 }
 
-var testCases = map[string]string{
-	"get secret simple": `
+var testCases = `
+case: good path
 args:
   url: /api/getsecret?id={{ .remoteRef.key }}&version={{ .remoteRef.version }}
   key: testkey
@@ -60,25 +61,35 @@ want:
   path: /api/getsecret?id=testkey&version=1
   err: ""
   result: secret-value
-`,
-}
+---
+case: url error
+args:
+  url: /api/getsecret?id={{ .unclosed.template
+want:
+  err: failed to parse url
+`
 
 func TestWebhookGetSecret(t *testing.T) {
-	for testname, testcaseyaml := range testCases {
-		testcase := &testCase{}
-		yaml.Unmarshal([]byte(testcaseyaml), testcase)
-		if testcase.Reason == "" {
-			testcase.Reason = testname
+	ydec := yaml.NewDecoder(bytes.NewReader([]byte(testCases)))
+	for {
+		var tc testCase
+		if err := ydec.Decode(&tc); err != nil {
+			if err != io.EOF {
+				t.Errorf("testcase decode error %w", err)
+			}
+			break
 		}
-		runTestCase(testcase, t)
+		// fmt.Printf("Running testcase %s\n", tc.Case)
+		runTestCase(&tc, t)
 	}
 }
 
 func runTestCase(tc *testCase, t *testing.T) {
+	// fmt.Printf("Testcase %s:\n  url '%s' -> path '%s'\n  key '%s' version '%s' -> err '%s' + result '%s'\n  response '%s' -> jsonpath '%s'\n", tc.Case, tc.Args.URL, tc.Want.Path, tc.Args.Key, tc.Args.Version, tc.Want.Err, tc.Want.Result, tc.Args.Response, tc.Args.JSONPath)
 	// Start a new server for every test case because the server wants to check the expected api path
 	ts := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		if tc.Want.Path != "" && req.URL.String() != tc.Want.Path {
-			t.Errorf("%s: unexpected api path: %s, expected %s", tc.Reason, req.URL.String(), tc.Want.Path)
+			t.Errorf("%s: unexpected api path: %s, expected %s", tc.Case, req.URL.String(), tc.Want.Path)
 		}
 		rw.Write([]byte(tc.Args.Response))
 	}))
@@ -88,7 +99,7 @@ func runTestCase(tc *testCase, t *testing.T) {
 	testProv := &Provider{}
 	client, err := testProv.NewClient(context.Background(), testStore, nil, "testnamespace")
 	if err != nil {
-		t.Errorf("%s: error creating client: %s", tc.Reason, err.Error())
+		t.Errorf("%s: error creating client: %s", tc.Case, err.Error())
 		return
 	}
 
@@ -98,10 +109,10 @@ func runTestCase(tc *testCase, t *testing.T) {
 	}
 	secret, err := client.GetSecret(context.Background(), testRef)
 	if !errorContains(err, tc.Want.Err) {
-		t.Errorf("%s: unexpected error: %s (expected '%s')", tc.Reason, err.Error(), tc.Want.Err)
+		t.Errorf("%s: unexpected error: %s (expected '%s')", tc.Case, err.Error(), tc.Want.Err)
 	}
 	if err == nil && string(secret) != tc.Want.Result {
-		t.Errorf("%s:unexpected response: %s (expected '%s')", tc.Reason, secret, tc.Want.Result)
+		t.Errorf("%s: unexpected response: %s (expected '%s')", tc.Case, secret, tc.Want.Result)
 	}
 }
 

@@ -23,7 +23,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strings"
 	tpl "text/template"
 
@@ -112,7 +111,7 @@ func (w *WebHook) GetSecret(ctx context.Context, ref esv1alpha1.ExternalSecretDa
 		}
 		jsonvalue, ok := jsondata.(string)
 		if !ok {
-			return nil, fmt.Errorf("failed to get response (wrong type: %v)", reflect.TypeOf(jsondata))
+			return nil, fmt.Errorf("failed to get response (wrong type: %T)", jsondata)
 		}
 		return []byte(jsonvalue), nil
 	}
@@ -144,14 +143,14 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 		if !ok {
 			jsonstring, ok := jsondata.(string)
 			if !ok {
-				return nil, fmt.Errorf("failed to get response (wrong type: %v)", reflect.TypeOf(jsondata))
+				return nil, fmt.Errorf("failed to get response (wrong type: %T)", jsondata)
 			}
 			if err := yaml.Unmarshal([]byte(jsonstring), &jsondata); err != nil {
 				return nil, fmt.Errorf("failed to parse data json: %w", err)
 			}
 			jsonvalue, ok = jsondata.(map[string]interface{})
 			if !ok {
-				return nil, fmt.Errorf("failed to get response (wrong type in data: %v)", reflect.TypeOf(jsondata))
+				return nil, fmt.Errorf("failed to get response (wrong type in data: %T)", jsondata)
 			}
 		}
 	} else {
@@ -160,14 +159,14 @@ func (w *WebHook) GetSecretMap(ctx context.Context, ref esv1alpha1.ExternalSecre
 		}
 		jsonvalue, ok = jsondata.(map[string]interface{})
 		if !ok {
-			return nil, fmt.Errorf("failed to get response (wrong type in body: %v)", reflect.TypeOf(jsondata))
+			return nil, fmt.Errorf("failed to get response (wrong type in body: %T)", jsondata)
 		}
 	}
 	values := make(map[string][]byte)
 	for rKey, rValue := range jsonvalue {
 		jVal, ok := rValue.(string)
 		if !ok {
-			return nil, fmt.Errorf("failed to get response (wrong type: %v)", reflect.TypeOf(rValue))
+			return nil, fmt.Errorf("failed to get response (wrong type: %T)", rValue)
 		}
 		values[rKey] = []byte(jVal)
 	}
